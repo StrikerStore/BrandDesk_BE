@@ -208,16 +208,24 @@ router.get('/google/signin/callback', async (req, res) => {
 
     } else {
       // ── LOGIN FLOW ───────────────────────────────────────────
+      const isAdminLogin = redirect === 'admin';
+      const adminUrl = process.env.ADMIN_URL || 'http://localhost:5175';
+      const errorRedirectBase = isAdminLogin ? `${adminUrl}/login` : onboardingUrl;
+
+      console.log(`[AUTH] Login attempt: email=${profile.email}, intent=${intent}, redirect=${redirect}`);
+
       const [rows] = await db.query(
         'SELECT * FROM users WHERE email = ? AND is_active = 1',
         [profile.email.toLowerCase()]
       );
 
       if (!rows.length) {
-        return res.redirect(`${onboardingUrl}?auth_error=no_account`);
+        console.log(`[AUTH] FAILED: no active user found for email=${profile.email}`);
+        return res.redirect(`${errorRedirectBase}?auth_error=no_account`);
       }
 
       const user = rows[0];
+      console.log(`[AUTH] User found: id=${user.id}, email=${user.email}, role=${user.role}`);
 
       // Backfill google_id and avatar_url if missing
       if (!user.google_id || !user.avatar_url) {
@@ -228,10 +236,14 @@ router.get('/google/signin/callback', async (req, res) => {
       }
 
       // Admin panel redirect — no workspace needed for platform admins
-      if (redirect === 'admin' && user.role === 'admin') {
+      if (isAdminLogin) {
+        if (user.role !== 'admin') {
+          console.log(`[AUTH] FAILED: user ${user.email} is not admin (role=${user.role})`);
+          return res.redirect(`${adminUrl}/login?auth_error=not_admin`);
+        }
         const token = generateToken(user);
         setAuthCookie(res, token);
-        const adminUrl = process.env.ADMIN_URL || 'http://localhost:5175';
+        console.log(`[AUTH] SUCCESS: admin login for ${user.email}, redirecting to ${adminUrl}`);
         return res.redirect(`${adminUrl}?token=${token}`);
       }
 
@@ -268,8 +280,10 @@ router.get('/google/signin/callback', async (req, res) => {
       res.redirect(`${frontendUrl}?token=${token}`);
     }
   } catch (err) {
-    console.error('Google signin callback error:', err.message);
-    res.redirect(`${onboardingUrl}?auth_error=callback_failed`);
+    console.error('[AUTH] Google signin callback error:', err.message, err.stack);
+    const adminUrl = process.env.ADMIN_URL || 'http://localhost:5175';
+    const errorRedirectBase = redirect === 'admin' ? `${adminUrl}/login` : onboardingUrl;
+    res.redirect(`${errorRedirectBase}?auth_error=callback_failed`);
   }
 });
 
