@@ -120,7 +120,7 @@ router.get('/google/signin/callback', async (req, res) => {
         // Create user (no password)
         const [userResult] = await conn.query(
           'INSERT INTO users (name, email, google_id, avatar_url, role) VALUES (?, ?, ?, ?, ?)',
-          [profile.name, profile.email.toLowerCase(), profile.id, profile.picture || null, 'admin']
+          [profile.name, profile.email.toLowerCase(), profile.id, profile.picture || null, 'user']
         );
         const userId = userResult.insertId;
 
