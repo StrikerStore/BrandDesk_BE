@@ -120,7 +120,7 @@ router.get('/google/signin/callback', async (req, res) => {
         // Create user (no password)
         const [userResult] = await conn.query(
           'INSERT INTO users (name, email, google_id, avatar_url, role) VALUES (?, ?, ?, ?, ?)',
-          [profile.name, profile.email.toLowerCase(), profile.id, profile.picture || null, 'user']
+          [profile.name, profile.email.toLowerCase(), profile.id, profile.picture || null, 'owner']
         );
         const userId = userResult.insertId;
 
@@ -193,7 +193,7 @@ router.get('/google/signin/callback', async (req, res) => {
             <a href="${onboardingUrl}/onboarding" style="display:inline-block;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Start Onboarding →</a>`,
         }).catch(err => console.error('Welcome email failed:', err.message));
 
-        const user = { id: userId, name: profile.name, email: profile.email.toLowerCase(), role: 'admin' };
+        const user = { id: userId, name: profile.name, email: profile.email.toLowerCase(), role: 'owner' };
         const token = generateToken(user, workspaceId, 'owner');
         setAuthCookie(res, token);
 

@@ -161,8 +161,8 @@ router.patch('/:id/members/:userId', requireWorkspaceAdmin, async (req, res) => 
     }
 
     const { role } = req.body;
-    if (!['owner', 'admin', 'agent'].includes(role)) {
-      return res.status(400).json({ error: 'Invalid role' });
+    if (!['admin', 'agent'].includes(role)) {
+      return res.status(400).json({ error: 'Role must be admin or agent' });
     }
 
     await db.query(

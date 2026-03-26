@@ -55,7 +55,7 @@ router.post('/register', async (req, res) => {
     // Insert user
     const [userResult] = await conn.query(
       'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
-      [name.trim().slice(0, 100), email.toLowerCase().trim(), hash, 'admin']
+      [name.trim().slice(0, 100), email.toLowerCase().trim(), hash, 'owner']
     );
     const userId = userResult.insertId;
 
@@ -96,7 +96,7 @@ router.post('/register', async (req, res) => {
 
     await conn.commit();
 
-    const user = { id: userId, name: name.trim(), email: email.toLowerCase().trim(), role: 'admin' };
+    const user = { id: userId, name: name.trim(), email: email.toLowerCase().trim(), role: 'owner' };
     const token = generateToken(user, workspaceId, 'owner');
     setAuthCookie(res, token);
 
@@ -338,19 +338,19 @@ router.post('/', requireAdmin, async (req, res) => {
     if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
     if (!email?.trim() || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
     if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    if (!['admin', 'agent'].includes(role)) return res.status(400).json({ error: 'Role must be admin or agent' });
+    if (role !== 'agent') return res.status(400).json({ error: 'Role must be agent' });
 
     const hash = await bcrypt.hash(password, 12);
     const [result] = await db.query(
       'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
-      [name.trim().slice(0, 100), email.toLowerCase().trim(), hash, role]
+      [name.trim().slice(0, 100), email.toLowerCase().trim(), hash, 'agent']
     );
 
     // Also add to workspace if caller is workspace-aware
     if (req.user.workspace_id) {
       await db.query(
         'INSERT IGNORE INTO workspace_members (workspace_id, user_id, role) VALUES (?, ?, ?)',
-        [req.user.workspace_id, result.insertId, role === 'admin' ? 'admin' : 'agent']
+        [req.user.workspace_id, result.insertId, 'agent']
       );
     }
 
@@ -373,7 +373,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
     const params  = [];
 
     if (name?.trim())                           { updates.push('name = ?');          params.push(name.trim().slice(0, 100)); }
-    if (role && ['admin','agent'].includes(role)) { updates.push('role = ?');        params.push(role); }
+    if (role && ['owner','agent'].includes(role)) { updates.push('role = ?');        params.push(role); }
     if (is_active !== undefined)                { updates.push('is_active = ?');     params.push(is_active ? 1 : 0); }
     if (password && password.length >= 8) {
       updates.push('password_hash = ?');

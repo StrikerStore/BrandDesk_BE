@@ -37,7 +37,7 @@ async function migrate() {
       name          VARCHAR(100) NOT NULL,
       email         VARCHAR(255) NOT NULL UNIQUE,
       password_hash VARCHAR(255) NULL,
-      role          ENUM('admin','agent') DEFAULT 'agent',
+      role          ENUM('admin','owner','agent') DEFAULT 'owner',
       google_id     VARCHAR(255) NULL,
       avatar_url    VARCHAR(500) NULL,
       is_active     TINYINT(1) DEFAULT 1,
@@ -47,6 +47,18 @@ async function migrate() {
       UNIQUE INDEX idx_google_id (google_id)
     )
   `, 'users table');
+
+  // Upgrade ENUM for existing databases + backfill owners
+  await safely(conn, `
+    ALTER TABLE users MODIFY COLUMN role ENUM('admin','owner','agent') DEFAULT 'owner'
+  `, 'users.role ENUM upgrade');
+
+  await safely(conn, `
+    UPDATE users u
+    INNER JOIN workspace_members wm ON wm.user_id = u.id AND wm.role = 'owner'
+    SET u.role = 'owner'
+    WHERE u.role = 'agent'
+  `, 'backfill owner roles');
 
   // -- auth_tokens (v1, legacy — kept for backward compat) --
   await safely(conn, `
