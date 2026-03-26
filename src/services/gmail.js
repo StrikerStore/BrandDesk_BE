@@ -234,7 +234,12 @@ async function syncThreads(workspaceId, fullSync = false, targetBrandId = null) 
       }
 
     } catch (err) {
-      console.error(`[ws:${workspaceId}] Error syncing brand ${brand.name}:`, err.message);
+      const isAuthError = /invalid.credentials|token.*expired|unauthorized|not authenticated/i.test(err.message);
+      if (isAuthError) {
+        console.error(`🔑 [ws:${workspaceId}] Gmail auth error for brand "${brand.name}" — token may be expired. User must re-connect Gmail. Details: ${err.message}`);
+      } else {
+        console.error(`[ws:${workspaceId}] Error syncing brand "${brand.name}":`, err.message);
+      }
     }
   }
 
@@ -304,9 +309,16 @@ async function processThread(gmail, gmailThreadId, brand, workspaceId) {
 
   if (existing.length) {
     threadId = existing[0].id;
+
+    // If the latest message is from the customer (inbound), reopen the thread
+    // so it reappears in the agent's "open" inbox filter.
+    const reopenClause = isUnread
+      ? ", status = CASE WHEN status IN ('in_progress','resolved') THEN 'open' ELSE status END, status_changed_at = CASE WHEN status IN ('in_progress','resolved') THEN NOW() ELSE status_changed_at END"
+      : '';
+
     await db.query(
       `UPDATE threads SET
-        is_unread=?, updated_at=NOW(),
+        is_unread=?, updated_at=NOW()${reopenClause},
         ticket_id=COALESCE(ticket_id, ?),
         order_number=COALESCE(order_number, ?),
         issue_category=COALESCE(issue_category, ?),

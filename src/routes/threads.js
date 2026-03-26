@@ -86,8 +86,13 @@ router.get('/:id', requireWorkspace, async (req, res) => {
     const [threads] = await db.query('SELECT * FROM threads WHERE id = ? AND workspace_id = ?', [req.params.id, wsId]);
     if (!threads.length) return res.status(404).json({ error: 'Thread not found' });
 
+    // Exclude body_html — it can be 50-200KB per message and is not rendered by the frontend.
+    // Only plain `body` (stripped text) is displayed in the thread panel.
     const [messages] = await db.query(
-      'SELECT * FROM messages WHERE thread_id = ? ORDER BY sent_at ASC', [req.params.id]
+      `SELECT id, workspace_id, thread_id, gmail_message_id, direction, from_email, from_name,
+              body, is_note, sent_at, created_at
+       FROM messages WHERE thread_id = ? ORDER BY sent_at ASC`,
+      [req.params.id]
     );
     const messageIds = messages.map(m => m.id);
     let attachments = [];

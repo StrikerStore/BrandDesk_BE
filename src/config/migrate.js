@@ -220,7 +220,7 @@ async function migrate() {
       from_email       VARCHAR(255),
       from_name        VARCHAR(255),
       body             TEXT,
-      body_html        TEXT,
+      body_html        MEDIUMTEXT,
       is_note          TINYINT(1) DEFAULT 0,
       sent_at          TIMESTAMP,
       created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -230,6 +230,11 @@ async function migrate() {
       INDEX idx_ws (workspace_id)
     )
   `, 'messages table');
+
+  // Upgrade body_html to MEDIUMTEXT so large email HTML (>64KB) doesn't get truncated/fail
+  await safely(conn, `
+    ALTER TABLE messages MODIFY COLUMN body_html MEDIUMTEXT
+  `, 'messages.body_html → MEDIUMTEXT');
 
   await addIndex(conn, 'messages', 'ft_messages',
     `ALTER TABLE messages ADD FULLTEXT INDEX ft_messages (body)`);
