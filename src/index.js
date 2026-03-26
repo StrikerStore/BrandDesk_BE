@@ -73,9 +73,13 @@ const corsOptions = {
   optionsSuccessStatus: 204,
 };
 
-// Handle preflight (OPTIONS) with the SAME credentials-aware config
+// ── CORS — skip for PayU callbacks (they POST from secure.payu.in) ──
+const CORS_BYPASS_PATHS = ['/api/subscriptions/success', '/api/subscriptions/failure', '/api/webhooks/payu'];
 app.options('*', cors(corsOptions));
-app.use(cors(corsOptions));
+app.use((req, res, next) => {
+  if (CORS_BYPASS_PATHS.includes(req.path)) return next();
+  cors(corsOptions)(req, res, next);
+});
 
 app.use(express.json({ limit: '2mb' })); // tighter limit
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
