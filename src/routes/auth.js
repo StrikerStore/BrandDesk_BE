@@ -227,6 +227,14 @@ router.get('/google/signin/callback', async (req, res) => {
         );
       }
 
+      // Admin panel redirect — no workspace needed for platform admins
+      if (redirect === 'admin' && user.role === 'admin') {
+        const token = generateToken(user);
+        setAuthCookie(res, token);
+        const adminUrl = process.env.ADMIN_URL || 'http://localhost:5175';
+        return res.redirect(`${adminUrl}?token=${token}`);
+      }
+
       // Look up workspaces
       const [members] = await db.query(
         `SELECT wm.workspace_id, wm.role as workspace_role, w.name as workspace_name,
@@ -257,13 +265,6 @@ router.get('/google/signin/callback', async (req, res) => {
       }
 
       setAuthCookie(res, token);
-
-      // Admin redirect: if redirect=admin and user is platform admin, go to admin app
-      if (redirect === 'admin' && user.role === 'admin') {
-        const adminUrl = process.env.ADMIN_URL || 'http://localhost:5175';
-        return res.redirect(`${adminUrl}?token=${token}`);
-      }
-
       res.redirect(`${frontendUrl}?token=${token}`);
     }
   } catch (err) {
