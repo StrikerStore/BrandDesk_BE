@@ -323,6 +323,10 @@ router.get('/users', async (req, res) => {
 
 router.patch('/users/:id/deactivate', async (req, res) => {
   try {
+    const [rows] = await db.query('SELECT role FROM users WHERE id = ?', [req.params.id]);
+    if (rows.length && rows[0].role === 'admin') {
+      return res.status(403).json({ error: 'Cannot deactivate an admin user' });
+    }
     await db.query('UPDATE users SET is_active = 0 WHERE id = ?', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
@@ -333,6 +337,21 @@ router.patch('/users/:id/deactivate', async (req, res) => {
 router.patch('/users/:id/reactivate', async (req, res) => {
   try {
     await db.query('UPDATE users SET is_active = 1 WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT role FROM users WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    if (rows[0].role === 'admin') {
+      return res.status(403).json({ error: 'Cannot delete an admin user' });
+    }
+    await db.query('DELETE FROM workspace_members WHERE user_id = ?', [req.params.id]);
+    await db.query('DELETE FROM users WHERE id = ?', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

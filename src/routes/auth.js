@@ -220,8 +220,8 @@ router.get('/google/signin/callback', async (req, res) => {
       );
 
       if (!rows.length) {
-        console.log(`[AUTH] FAILED: no active user found for email=${profile.email}`);
-        return res.redirect(`${errorRedirectBase}?auth_error=no_account`);
+        console.log(`[AUTH] No account for ${profile.email}, redirecting to signup`);
+        return res.redirect(`${onboardingUrl}?auth_error=no_account`);
       }
 
       const user = rows[0];
