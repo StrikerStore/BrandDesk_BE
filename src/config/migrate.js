@@ -8,14 +8,14 @@
  * Run:  node src/config/migrate.js
  */
 require('dotenv').config();
-const mysql  = require('mysql2/promise');
+const mysql = require('mysql2/promise');
 const crypto = require('crypto');
 
 async function migrate() {
   const conn = await mysql.createConnection({
-    host:     process.env.DB_HOST     || 'localhost',
-    port:     parseInt(process.env.DB_PORT || '3306'),
-    user:     process.env.DB_USER     || 'root',
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '3306'),
+    user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     multipleStatements: true,
   });
@@ -479,10 +479,10 @@ async function migrate() {
 
   // Default settings
   const defaults = [
-    ['auto_ack_enabled',       'false'],
+    ['auto_ack_enabled', 'false'],
     ['auto_ack_delay_minutes', '5'],
-    ['auto_close_enabled',     'false'],
-    ['auto_close_days',        '7'],
+    ['auto_close_enabled', 'false'],
+    ['auto_close_days', '7'],
   ];
   for (const [key, value] of defaults) {
     await conn.query(
@@ -494,9 +494,9 @@ async function migrate() {
 
   // Default plans
   const plans = [
-    { name: 'trial',   display_name: 'Trial',   description: '14-day free trial',                     sort_order: 0, max_brands: 1,    max_members: 1,    max_threads_per_month: 200,  max_templates: 5,    price_monthly: 0,    price_yearly: 0,     is_default: 1 },
-    { name: 'starter', display_name: 'Starter', description: '3 brands · 3 members · 1K threads/mo', sort_order: 1, max_brands: 3,    max_members: 3,    max_threads_per_month: 1000, max_templates: 20,   price_monthly: 999,  price_yearly: 9999,  is_default: 0 },
-    { name: 'pro',     display_name: 'Pro',     description: 'Unlimited everything + priority support', sort_order: 2, max_brands: null, max_members: null, max_threads_per_month: null, max_templates: null, price_monthly: 2499, price_yearly: 24999, is_default: 0 },
+    { name: 'trial', display_name: 'Trial', description: '14-day free trial', sort_order: 0, max_brands: 1, max_members: 1, max_threads_per_month: 200, max_templates: 5, price_monthly: 0, price_yearly: 0, is_default: 1 },
+    { name: 'starter', display_name: 'Starter', description: '3 brands · 3 members · 1K threads/mo', sort_order: 1, max_brands: 3, max_members: 3, max_threads_per_month: 1000, max_templates: 20, price_monthly: 999, price_yearly: 9999, is_default: 0 },
+    { name: 'pro', display_name: 'Pro', description: 'Unlimited everything + priority support', sort_order: 2, max_brands: null, max_members: null, max_threads_per_month: null, max_templates: null, price_monthly: 2499, price_yearly: 24999, is_default: 0 },
   ];
   for (const p of plans) {
     await conn.query(
@@ -529,7 +529,7 @@ async function safely(conn, sql, label) {
     await conn.query(sql);
     console.log(`  ✅ ${label}`);
   } catch (err) {
-    if (err.code === 'ER_TABLE_EXISTS_ERROR') {
+    if (err.code === 'ER_TABLE_EXISTS_ERROR' || err.code === 'ER_DUP_FIELDNAME') {
       console.log(`  ⏭  ${label} already exists`);
     } else {
       throw err;
