@@ -365,6 +365,29 @@ async function migrate() {
     )
   `, 'coupon_usage table');
 
+  // -- billing_config (v17 — GST & company info for invoices) --
+  await safely(conn, `
+    CREATE TABLE IF NOT EXISTS billing_config (
+      id              INT PRIMARY KEY DEFAULT 1,
+      gst_number      VARCHAR(20) NULL,
+      gst_percent     DECIMAL(5,2) DEFAULT 18.00,
+      company_name    VARCHAR(200) DEFAULT 'BrandDesk',
+      company_address TEXT NULL,
+      updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `, 'billing_config table');
+  await safely(conn, `INSERT IGNORE INTO billing_config (id, gst_percent, company_name) VALUES (1, 18.00, 'BrandDesk')`, 'billing_config seed');
+
+  // -- payment_transactions invoice columns (v17) --
+  await safely(conn, `ALTER TABLE payment_transactions ADD COLUMN invoice_number VARCHAR(50) NULL`, 'pt.invoice_number');
+  await safely(conn, `ALTER TABLE payment_transactions ADD COLUMN base_amount DECIMAL(10,2) NULL`, 'pt.base_amount');
+  await safely(conn, `ALTER TABLE payment_transactions ADD COLUMN gst_amount DECIMAL(10,2) NULL`, 'pt.gst_amount');
+  await safely(conn, `ALTER TABLE payment_transactions ADD COLUMN coupon_code VARCHAR(50) NULL`, 'pt.coupon_code');
+  await safely(conn, `ALTER TABLE payment_transactions ADD COLUMN coupon_discount DECIMAL(10,2) NULL`, 'pt.coupon_discount');
+  await safely(conn, `ALTER TABLE payment_transactions ADD COLUMN customer_gst VARCHAR(20) NULL`, 'pt.customer_gst');
+  await safely(conn, `ALTER TABLE payment_transactions ADD COLUMN plan_name VARCHAR(50) NULL`, 'pt.plan_name');
+  await safely(conn, `ALTER TABLE payment_transactions ADD COLUMN billing_cycle VARCHAR(10) NULL`, 'pt.billing_cycle');
+
   // -- plans (v16) --
   await safely(conn, `
     CREATE TABLE IF NOT EXISTS plans (

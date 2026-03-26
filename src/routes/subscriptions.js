@@ -3,6 +3,7 @@ const db = require('../config/db');
 const { requireWorkspace, requireWorkspaceAdmin } = require('../middleware/authMiddleware');
 const payu = require('../services/payu');
 const { PLAN_LIMITS } = require('../middleware/planLimits');
+const { sendPaymentReceipt } = require('../services/mailer');
 
 const router = express.Router();
 
@@ -122,11 +123,21 @@ router.post('/validate-coupon', requireWorkspace, async (req, res) => {
   }
 });
 
+// ── Invoice number generator ──────────────────────────────────────────
+async function generateInvoiceNumber() {
+  const prefix = `BD-INV-${new Date().toISOString().slice(0, 7).replace('-', '')}`;
+  const [rows] = await db.query(
+    "SELECT COUNT(*) as cnt FROM payment_transactions WHERE invoice_number LIKE ?",
+    [`${prefix}%`]
+  );
+  return `${prefix}-${String(rows[0].cnt + 1).padStart(4, '0')}`;
+}
+
 // ── POST /api/subscriptions/initiate ───────────────────────────────
 // Creates a pending subscription + transaction, returns PayU form params
 router.post('/initiate', requireWorkspaceAdmin, async (req, res) => {
   try {
-    const { plan, cycle = 'monthly', coupon_code } = req.body;
+    const { plan, cycle = 'monthly', coupon_code, customer_gst } = req.body;
 
     if (!['starter', 'pro'].includes(plan)) {
       return res.status(400).json({ error: 'Invalid plan. Choose starter or pro.' });
@@ -149,17 +160,30 @@ router.post('/initiate', requireWorkspaceAdmin, async (req, res) => {
       }
     }
 
+    // Load GST config
+    let gstPercent = 18;
+    try {
+      const [cfgRows] = await db.query('SELECT gst_percent FROM billing_config WHERE id = 1');
+      if (cfgRows.length) gstPercent = parseFloat(cfgRows[0].gst_percent) || 18;
+    } catch (_) {}
+
     // Validate and apply coupon if provided
-    let amount = await payu.getAmount(plan, cycle);
+    let baseAmount = await payu.getAmount(plan, cycle);
     let couponData = null;
+    let couponDiscount = 0;
     if (coupon_code) {
       const couponResult = await validateCoupon(coupon_code.trim().toUpperCase(), plan, cycle);
       if (!couponResult.valid) {
         return res.status(400).json({ error: couponResult.error });
       }
-      amount = couponResult.final_amount;
+      couponDiscount = couponResult.discount_amount;
+      baseAmount = couponResult.final_amount;
       couponData = couponResult;
     }
+
+    // Calculate GST on discounted base
+    const gstAmount = Math.round(baseAmount * gstPercent / 100 * 100) / 100;
+    const totalAmount = Math.round((baseAmount + gstAmount) * 100) / 100;
 
     const successUrl = `${API_URL()}/api/subscriptions/success`;
     const failureUrl = `${API_URL()}/api/subscriptions/failure`;
@@ -170,33 +194,39 @@ router.post('/initiate', requireWorkspaceAdmin, async (req, res) => {
       user: req.user,
       successUrl,
       failureUrl,
-      overrideAmount: couponData ? amount : undefined,
+      overrideAmount: totalAmount,
     });
+
+    // Generate invoice number
+    const invoiceNumber = await generateInvoiceNumber();
 
     // Create pending subscription
     const [subResult] = await db.query(
       `INSERT INTO subscriptions (workspace_id, plan, billing_cycle, amount, status)
        VALUES (?, ?, ?, ?, 'pending')`,
-      [wsId, plan, cycle, amount]
+      [wsId, plan, cycle, totalAmount]
     );
 
-    // Create pending transaction
+    // Create pending transaction with full billing detail
     await db.query(
-      `INSERT INTO payment_transactions (workspace_id, subscription_id, txn_id, amount, status)
-       VALUES (?, ?, ?, ?, 'pending')`,
-      [wsId, subResult.insertId, txnid, amount]
+      `INSERT INTO payment_transactions
+       (workspace_id, subscription_id, txn_id, amount, base_amount, gst_amount,
+        coupon_code, coupon_discount, customer_gst, plan_name, billing_cycle, invoice_number, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      [wsId, subResult.insertId, txnid, totalAmount, baseAmount, gstAmount,
+       coupon_code ? coupon_code.trim().toUpperCase() : null,
+       couponDiscount || null,
+       customer_gst?.trim() || null,
+       plan, cycle, invoiceNumber]
     );
 
     // Store coupon info in udf4 for retrieval in success callback
     if (couponData) {
       formParams.udf4 = `${couponData.coupon_id}:${couponData.discount_amount}`;
-    }
-    // Regenerate hash since udf4 changed
-    if (couponData) {
       formParams.hash = payu.generateHash(formParams);
     }
 
-    res.json({ payuBaseUrl, formParams });
+    res.json({ payuBaseUrl, formParams, gst_percent: gstPercent, base_amount: baseAmount, gst_amount: gstAmount, total: totalAmount });
   } catch (err) {
     console.error('Subscription initiate error:', err);
     res.status(500).json({ error: 'Failed to initiate subscription' });
@@ -261,6 +291,7 @@ router.post('/success', async (req, res) => {
     );
 
     // Record coupon usage if coupon was applied (stored in udf4 as "couponId:discountAmount")
+    console.log('[PAYU] Coupon udf4:', udf4, 'subId:', subId);
     if (udf4 && udf4.includes(':') && subId) {
       try {
         const [couponId, discountAmount] = udf4.split(':');
@@ -276,6 +307,22 @@ router.post('/success', async (req, res) => {
     }
 
     console.log(`✅ Subscription activated: workspace=${wsId}, plan=${plan}, cycle=${cycle}, txn=${txnid}`);
+
+    // Send receipt email
+    try {
+      const [txnRows2] = await db.query('SELECT * FROM payment_transactions WHERE txn_id = ?', [txnid]);
+      const [cfgRows] = await db.query('SELECT * FROM billing_config WHERE id = 1');
+      const txnData = txnRows2[0];
+      const cfg = cfgRows[0] || {};
+      if (txnData) {
+        sendPaymentReceipt({
+          to: payuResp.email,
+          invoice: { ...txnData, company_name: cfg.company_name, company_address: cfg.company_address, gst_number: cfg.gst_number, gst_percent: cfg.gst_percent },
+        }).catch(err => console.error('Receipt email failed:', err.message));
+      }
+    } catch (emailErr) {
+      console.error('Receipt email error:', emailErr.message);
+    }
 
     // Redirect user back to app
     res.redirect(`${FRONTEND_URL()}?billing=success`);
@@ -396,9 +443,10 @@ router.get('/current', requireWorkspace, async (req, res) => {
       [wsId]
     );
 
-    // Get last 10 transactions
+    // Get last 10 transactions (include invoice fields)
     const [txns] = await db.query(
-      `SELECT txn_id, amount, status, payment_method, created_at
+      `SELECT txn_id, amount, base_amount, gst_amount, invoice_number, coupon_code, coupon_discount,
+              status, payment_method, payu_mihpayid, plan_name, billing_cycle, created_at
        FROM payment_transactions WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 10`,
       [wsId]
     );
@@ -464,6 +512,55 @@ router.post('/cancel', requireWorkspaceAdmin, async (req, res) => {
   } catch (err) {
     console.error('Cancel subscription error:', err);
     res.status(500).json({ error: 'Failed to cancel subscription' });
+  }
+});
+
+// ── GET /api/subscriptions/invoice/:txnId ─────────────────────────────
+// Returns invoice data for a specific transaction (user-facing, workspace-scoped)
+router.get('/invoice/:txnId', requireWorkspace, async (req, res) => {
+  try {
+    const wsId = req.user.workspace_id;
+    const [rows] = await db.query(
+      `SELECT pt.*, w.name as workspace_name
+       FROM payment_transactions pt
+       LEFT JOIN workspaces w ON w.id = pt.workspace_id
+       WHERE pt.txn_id = ? AND pt.workspace_id = ?`,
+      [req.params.txnId, wsId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Transaction not found' });
+
+    const txn = rows[0];
+    // Load billing config for company details
+    let billingConfig = { gst_number: null, gst_percent: 18, company_name: 'BrandDesk', company_address: null };
+    try {
+      const [bc] = await db.query('SELECT * FROM billing_config WHERE id = 1');
+      if (bc.length) billingConfig = bc[0];
+    } catch {}
+
+    res.json({
+      invoice_number: txn.invoice_number,
+      txn_id: txn.txn_id,
+      payu_mihpayid: txn.payu_mihpayid,
+      created_at: txn.created_at,
+      plan_name: txn.plan_name,
+      billing_cycle: txn.billing_cycle,
+      base_amount: txn.base_amount,
+      gst_amount: txn.gst_amount,
+      gst_percent: billingConfig.gst_percent,
+      amount: txn.amount,
+      coupon_code: txn.coupon_code,
+      coupon_discount: txn.coupon_discount,
+      customer_gst: txn.customer_gst,
+      payment_method: txn.payment_method,
+      status: txn.status,
+      workspace_name: txn.workspace_name,
+      company_name: billingConfig.company_name,
+      company_address: billingConfig.company_address,
+      gst_number: billingConfig.gst_number,
+    });
+  } catch (err) {
+    console.error('Invoice fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch invoice' });
   }
 });
 

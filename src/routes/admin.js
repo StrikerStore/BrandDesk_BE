@@ -1249,4 +1249,128 @@ router.patch('/support/tickets/:id/status', async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════
+//  BILLING CONFIG
+// ══════════════════════════════════════════════════════════════════════
+
+router.get('/billing-config', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM billing_config WHERE id = 1');
+    res.json(rows[0] || { id: 1, gst_number: null, gst_percent: 18, company_name: 'BrandDesk', company_address: null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/billing-config', async (req, res) => {
+  try {
+    const { gst_number, gst_percent, company_name, company_address } = req.body;
+    await db.query(
+      `INSERT INTO billing_config (id, gst_number, gst_percent, company_name, company_address)
+       VALUES (1, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE gst_number = VALUES(gst_number), gst_percent = VALUES(gst_percent),
+         company_name = VALUES(company_name), company_address = VALUES(company_address)`,
+      [gst_number || null, gst_percent ?? 18, company_name || 'BrandDesk', company_address || null]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  TRANSACTIONS CSV EXPORT  (must be before :txnId param route)
+// ══════════════════════════════════════════════════════════════════════
+
+router.get('/transactions/export', async (req, res) => {
+  try {
+    const { status: txStatus } = req.query;
+    const conditions = [];
+    const params = [];
+    if (txStatus) { conditions.push('pt.status = ?'); params.push(txStatus); }
+    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    const [rows] = await db.query(
+      `SELECT pt.*, w.name as workspace_name
+       FROM payment_transactions pt
+       LEFT JOIN workspaces w ON w.id = pt.workspace_id
+       ${where}
+       ORDER BY pt.created_at DESC`,
+      params
+    );
+
+    // Build CSV
+    const headers = ['Invoice #', 'Txn ID', 'PayU Ref', 'Workspace', 'Email', 'Plan', 'Cycle', 'Base Amount', 'GST', 'Total', 'Coupon', 'Coupon Discount', 'Customer GST', 'Status', 'Method', 'Date'];
+    const csvRows = [headers.join(',')];
+    for (const r of rows) {
+      const row = [
+        r.invoice_number || '', r.txn_id || '', r.payu_mihpayid || '',
+        (r.workspace_name || '').replace(/,/g, ' '), (r.email || '').replace(/,/g, ' '),
+        r.plan_name || '', r.billing_cycle || '',
+        r.base_amount || '', r.gst_amount || '', r.amount || '',
+        r.coupon_code || '', r.coupon_discount || '', r.customer_gst || '',
+        r.status || '', r.payment_method || '',
+        r.created_at ? new Date(r.created_at).toISOString().slice(0, 19).replace('T', ' ') : '',
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`);
+      csvRows.push(row.join(','));
+    }
+
+    const csv = csvRows.join('\n');
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=transactions-${date}.csv`);
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  TRANSACTION INVOICE (admin — no workspace restriction)
+// ══════════════════════════════════════════════════════════════════════
+
+router.get('/transactions/:txnId/invoice', async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT pt.*, w.name as workspace_name
+       FROM payment_transactions pt
+       LEFT JOIN workspaces w ON w.id = pt.workspace_id
+       WHERE pt.txn_id = ?`,
+      [req.params.txnId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Transaction not found' });
+
+    const txn = rows[0];
+    let billingConfig = { gst_number: null, gst_percent: 18, company_name: 'BrandDesk', company_address: null };
+    try {
+      const [bc] = await db.query('SELECT * FROM billing_config WHERE id = 1');
+      if (bc.length) billingConfig = bc[0];
+    } catch {}
+
+    res.json({
+      invoice_number: txn.invoice_number,
+      txn_id: txn.txn_id,
+      payu_mihpayid: txn.payu_mihpayid,
+      created_at: txn.created_at,
+      plan_name: txn.plan_name,
+      billing_cycle: txn.billing_cycle,
+      base_amount: txn.base_amount,
+      gst_amount: txn.gst_amount,
+      gst_percent: billingConfig.gst_percent,
+      amount: txn.amount,
+      coupon_code: txn.coupon_code,
+      coupon_discount: txn.coupon_discount,
+      customer_gst: txn.customer_gst,
+      payment_method: txn.payment_method,
+      status: txn.status,
+      workspace_name: txn.workspace_name,
+      company_name: billingConfig.company_name,
+      company_address: billingConfig.company_address,
+      gst_number: billingConfig.gst_number,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
