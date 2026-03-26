@@ -218,10 +218,28 @@ cron.schedule('30 0 * * *', async () => {
   } catch (err) { console.error('Past-due grace cron error:', err.message); }
 });
 
-app.listen(PORT, () => {
+// ── Seed super-admin on startup (skip if already exists) ─────
+async function ensureSuperAdmin() {
+  const email = (process.env.ADMIN_EMAIL || '').toLowerCase().trim();
+  if (!email) return;
+  try {
+    const [rows] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+    if (rows.length) return;
+    await db.query(
+      'INSERT INTO users (name, email, role, is_active) VALUES (?, ?, ?, 1)',
+      [process.env.ADMIN_NAME || 'Admin', email, 'admin']
+    );
+    console.log(`✅ Super-admin seeded: ${email}`);
+  } catch (err) {
+    console.error('Super-admin seed error:', err.message);
+  }
+}
+
+app.listen(PORT, async () => {
   console.log(`🚀 BrandDesk backend running on port ${PORT}`);
   console.log(`🔒 Environment: ${isProd ? 'production' : 'development'}`);
   if (isProd) console.log(`🌐 Allowed origins: ${allowedOrigins.join(', ')}`);
+  await ensureSuperAdmin();
 });
 
 // Test commit for deployment - ignore
