@@ -58,6 +58,7 @@ function generateTxnId(workspaceId) {
 // Formula: sha512(key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||salt)
 function generateHash({ txnid, amount, productinfo, firstname, email, udf1 = '', udf2 = '', udf3 = '', udf4 = '', udf5 = '' }) {
   const str = `${PAYU_KEY()}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|${udf1}|${udf2}|${udf3}|${udf4}|${udf5}||||||${PAYU_SALT()}`;
+  console.log('[PAYU] Hash input:', str.replace(PAYU_SALT(), '***SALT***'));
   return crypto.createHash('sha512').update(str).digest('hex');
 }
 
@@ -96,25 +97,7 @@ async function buildPaymentParams({ plan, cycle, workspace, user, successUrl, fa
     udf5:        '',
   };
 
-  // Standing Instruction (SI) for recurring payments
-  const today = new Date();
-  const endDate = new Date(today);
-  endDate.setFullYear(endDate.getFullYear() + 10);
-
-  const formatDate = (d) => d.toISOString().split('T')[0];
-
-  params.api_version = '6';
-  params.si = '1';
-  params.si_details = JSON.stringify({
-    billingAmount:    amount,
-    billingCurrency:  'INR',
-    billingCycle:     cycle === 'yearly' ? 'YEARLY' : 'MONTHLY',
-    billingInterval:  1,
-    paymentStartDate: formatDate(today),
-    paymentEndDate:   formatDate(endDate),
-  });
-
-  // Generate hash
+  // Generate hash (standard formula — no SI/recurring for now)
   params.hash = generateHash(params);
 
   return {
