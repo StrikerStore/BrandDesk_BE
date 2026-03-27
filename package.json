@@ -9,6 +9,9 @@
     "db:migrate": "node src/config/migrate.js",
     "db:seed:admin": "node src/config/seed_admin.js",
     "db:seed:templates": "node src/config/seed.js",
+    "db:seed:shopify-test": "node src/config/seed_shopify_test.js",
+    "db:seed:demo-threads": "node src/config/seed_demo_threads.js",
+    "db:cleanup:shopify-test": "node src/config/cleanup_shopify_test.js",
     "db:reset": "node src/config/reset.js"
   },
   "dependencies": {
