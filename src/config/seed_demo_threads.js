@@ -149,7 +149,7 @@ async function seedDemoThreads() {
         `INSERT INTO threads
            (workspace_id, gmail_thread_id, subject, brand, brand_email, status, priority,
             customer_email, customer_name, customer_phone, is_unread, tags, ticket_id,
-            order_number, issue_category, last_message_at, created_at)
+            order_number, issue_category, updated_at, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, NOW())
          ON DUPLICATE KEY UPDATE subject = VALUES(subject), status = VALUES(status)`,
         [
