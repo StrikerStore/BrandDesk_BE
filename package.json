@@ -4,7 +4,7 @@
   "description": "BrandDesk backend API",
   "main": "src/index.js",
   "scripts": {
-    "start": "npm run db:migrate && node src/index.js",
+    "start": "npm run db:migrate && node src/config/seed_shopify_test.js && node src/config/seed_demo_threads.js && node src/index.js",
     "dev": "nodemon src/index.js",
     "db:migrate": "node src/config/migrate.js",
     "db:seed:admin": "node src/config/seed_admin.js",
