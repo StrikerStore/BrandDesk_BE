@@ -21,6 +21,7 @@ const adminRoutes         = require('./routes/admin');
 const widgetRoutes        = require('./routes/widget');
 const supportRoutes       = require('./routes/support');
 const demoRoutes          = require('./routes/demo');
+const shopifyWebhookRoutes = require('./routes/shopifyWebhooks');
 const db = require('./config/db');
 const { syncThreads } = require('./services/gmail');
 const { runAutoAck, runAutoClose } = require('./services/automation');
@@ -74,12 +75,20 @@ const corsOptions = {
 };
 
 // ── CORS — skip for PayU callbacks (they POST from secure.payu.in) ──
-const CORS_BYPASS_PATHS = ['/api/subscriptions/success', '/api/subscriptions/failure', '/api/webhooks/payu'];
+const CORS_BYPASS_PATHS = [
+  '/api/subscriptions/success', '/api/subscriptions/failure', '/api/webhooks/payu',
+  '/api/webhooks/shopify/customers/data_request',
+  '/api/webhooks/shopify/customers/redact',
+  '/api/webhooks/shopify/shop/redact',
+];
 app.options('*', cors(corsOptions));
 app.use((req, res, next) => {
   if (CORS_BYPASS_PATHS.includes(req.path)) return next();
   cors(corsOptions)(req, res, next);
 });
+
+// Shopify compliance webhooks — mounted BEFORE express.json() so they get the raw body for HMAC verification
+app.use('/api/webhooks/shopify', express.raw({ type: 'application/json' }), shopifyWebhookRoutes);
 
 app.use(express.json({ limit: '2mb' })); // tighter limit
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
