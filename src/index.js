@@ -77,6 +77,7 @@ const corsOptions = {
 // ── CORS — skip for PayU callbacks (they POST from secure.payu.in) ──
 const CORS_BYPASS_PATHS = [
   '/api/subscriptions/success', '/api/subscriptions/failure', '/api/webhooks/payu',
+  '/api/webhooks/shopify',
   '/api/webhooks/shopify/customers/data_request',
   '/api/webhooks/shopify/customers/redact',
   '/api/webhooks/shopify/shop/redact',

@@ -24,7 +24,7 @@ function verifyShopifyHmac(req, res, next) {
     .update(req.body) // req.body is a raw Buffer (express.raw)
     .digest('base64');
 
-  if (!crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(hmacHeader))) {
+  if (!crypto.timingSafeEqual(Buffer.from(digest, 'base64'), Buffer.from(hmacHeader, 'base64'))) {
     return res.status(401).json({ error: 'HMAC verification failed' });
   }
 
@@ -39,6 +39,19 @@ function verifyShopifyHmac(req, res, next) {
 }
 
 router.use(verifyShopifyHmac);
+
+// ══════════════════════════════════════════════════════════════
+// Single-endpoint dispatcher (Shopify TOML uses one URI for all
+// compliance topics and sends the topic in X-Shopify-Topic header)
+// ══════════════════════════════════════════════════════════════
+router.post('/', (req, res, next) => {
+  const topic = req.headers['x-shopify-topic'];
+  if (topic === 'customers/data_request') req.url = '/customers/data_request';
+  else if (topic === 'customers/redact')  req.url = '/customers/redact';
+  else if (topic === 'shop/redact')       req.url = '/shop/redact';
+  else return res.status(400).json({ error: `Unknown topic: ${topic}` });
+  next();
+});
 
 // ── Helper: find workspace IDs that use a given Shopify shop ──
 async function findWorkspacesByShop(shopDomain) {
