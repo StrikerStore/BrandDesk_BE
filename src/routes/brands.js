@@ -61,12 +61,19 @@ router.post('/', requireWorkspaceAdmin, async (req, res) => {
     if (!name?.trim())  return res.status(400).json({ error: 'Brand name required' });
 
     const widgetToken = crypto.randomBytes(32).toString('hex');
+
+    // Auto-link Gmail if workspace has exactly one connected Gmail account
+    const [gmailTokens] = await db.query(
+      'SELECT id FROM gmail_tokens WHERE workspace_id = ?', [req.user.workspace_id]
+    );
+    const autoGmailTokenId = gmailTokens.length === 1 ? gmailTokens[0].id : null;
+
     const [result] = await db.query(
-      `INSERT INTO brands (workspace_id, label, email, name, category, website, shopify_store, shopify_token, widget_token, brand_status, initial_sync_done)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 0)`,
+      `INSERT INTO brands (workspace_id, label, email, name, category, website, shopify_store, shopify_token, widget_token, gmail_token_id, brand_status, initial_sync_done)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 0)`,
       [req.user.workspace_id, label?.trim() || null, email.trim(), name.trim(),
        category?.trim() || null, website?.trim() || null,
-       shopify_store?.trim() || null, shopify_token?.trim() || null, widgetToken]
+       shopify_store?.trim() || null, shopify_token?.trim() || null, widgetToken, autoGmailTokenId]
     );
 
     const [rows] = await db.query('SELECT * FROM brands WHERE id = ?', [result.insertId]);
@@ -93,11 +100,18 @@ router.post('/request', requireWorkspaceAdmin, checkPlanLimit('brands'), async (
     if (!name?.trim())  return res.status(400).json({ error: 'Brand name required' });
 
     const widgetToken = crypto.randomBytes(32).toString('hex');
+
+    // Auto-link Gmail if workspace has exactly one connected Gmail account
+    const [gmailTokens] = await db.query(
+      'SELECT id FROM gmail_tokens WHERE workspace_id = ?', [req.user.workspace_id]
+    );
+    const autoGmailTokenId = gmailTokens.length === 1 ? gmailTokens[0].id : null;
+
     const [result] = await db.query(
-      `INSERT INTO brands (workspace_id, email, name, category, website, widget_token, brand_status, initial_sync_done)
-       VALUES (?, ?, ?, ?, ?, ?, 'draft', 0)`,
+      `INSERT INTO brands (workspace_id, email, name, category, website, widget_token, gmail_token_id, brand_status, initial_sync_done)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', 0)`,
       [req.user.workspace_id, email.trim(), name.trim(),
-       category?.trim() || null, website?.trim() || null, widgetToken]
+       category?.trim() || null, website?.trim() || null, widgetToken, autoGmailTokenId]
     );
 
     const [rows] = await db.query('SELECT * FROM brands WHERE id = ?', [result.insertId]);
