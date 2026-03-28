@@ -82,9 +82,14 @@ const CORS_BYPASS_PATHS = [
   '/api/webhooks/shopify/customers/redact',
   '/api/webhooks/shopify/shop/redact',
 ];
+// Widget routes: allow any origin (storefront domains vary; auth is via brand_token)
+const widgetCors = cors({ origin: true, credentials: false });
+app.use('/api/widget', widgetCors);
+
 app.options('*', cors(corsOptions));
 app.use((req, res, next) => {
   if (CORS_BYPASS_PATHS.includes(req.path)) return next();
+  if (req.path.startsWith('/api/widget')) return next(); // already handled above
   cors(corsOptions)(req, res, next);
 });
 

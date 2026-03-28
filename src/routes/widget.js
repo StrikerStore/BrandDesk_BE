@@ -24,7 +24,7 @@ async function resolveBrand(shop, widgetToken) {
 // ══════════════════════════════════════════════════════════════════════
 router.post('/ticket', async (req, res) => {
   try {
-    const { shop, brand_token, name, email, order_number, issue_category, sub_issue, message } = req.body;
+    const { shop, brand_token, name, email, phone, order_number, issue_category, sub_issue, message } = req.body;
 
     if (!email || !message) {
       return res.status(400).json({ error: 'Email and message are required' });
@@ -64,10 +64,10 @@ router.post('/ticket', async (req, res) => {
     const [result] = await db.query(
       `INSERT INTO threads (
         workspace_id, gmail_thread_id, gmail_message_id,
-        subject, snippet, customer_email, customer_name,
+        subject, snippet, customer_email, customer_name, customer_phone,
         brand, status, priority, ticket_id, order_number,
         issue_category, sub_issue, is_shopify_form, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', 'normal', ?, ?, ?, ?, 1, NOW())`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 'normal', ?, ?, ?, ?, 1, NOW())`,
       [
         brand.workspace_id,
         `widget_${ticketId}`,      // pseudo gmail_thread_id for widget-created tickets
@@ -76,6 +76,7 @@ router.post('/ticket', async (req, res) => {
         message.substring(0, 200),
         email.toLowerCase().trim(),
         name || null,
+        phone || null,
         brand.label,
         ticketId,
         order_number || null,
@@ -105,10 +106,12 @@ router.post('/ticket', async (req, res) => {
 
     // Upsert customer
     await db.query(
-      `INSERT INTO customers (workspace_id, email, name)
-       VALUES (?, ?, ?)
-       ON DUPLICATE KEY UPDATE name = COALESCE(NULLIF(name, ''), VALUES(name))`,
-      [brand.workspace_id, email.toLowerCase().trim(), name || '']
+      `INSERT INTO customers (workspace_id, email, name, phone)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         name = COALESCE(NULLIF(name, ''), VALUES(name)),
+         phone = COALESCE(NULLIF(phone, ''), VALUES(phone))`,
+      [brand.workspace_id, email.toLowerCase().trim(), name || '', phone || null]
     );
 
     res.status(201).json({
@@ -213,6 +216,14 @@ router.get('/config', async (req, res) => {
         'Payment Issue',
         'Other',
       ],
+      sub_categories: {
+        'Order Issue':          ['Wrong Item Received', 'Missing Item', 'Order Not Received', 'Cancel Order', 'Modify Order', 'Other'],
+        'Shipping & Delivery':  ['Delayed Delivery', 'Tracking Not Updated', 'Damaged in Transit', 'Wrong Address', 'Other'],
+        'Returns & Refund':     ['Initiate Return', 'Refund Status', 'Exchange Request', 'Return Pickup Issue', 'Other'],
+        'Product Inquiry':      ['Size Guide', 'Product Availability', 'Product Quality', 'Other'],
+        'Payment Issue':        ['Payment Failed', 'Double Charged', 'Refund Not Received', 'COD Issue', 'Other'],
+        'Other':                ['General Query', 'Feedback', 'Complaint', 'Other'],
+      },
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load config' });
