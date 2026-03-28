@@ -85,6 +85,15 @@ function isShopifyContactForm(fromEmail, body) {
 }
 
 /**
+ * Determine if this email is a BrandDesk widget ticket notification.
+ */
+function isBrandDeskWidgetEmail(fromEmail, body) {
+  const isFromBrandDesk = fromEmail?.toLowerCase().includes('branddesk@plexzuu.com');
+  const hasWidgetPattern = body?.includes('You received a new message from BrandDesk Widget');
+  return isFromBrandDesk && hasWidgetPattern;
+}
+
+/**
  * Main parser — takes raw email data and returns structured ticket info.
  * All known fields map to dedicated properties; unknown custom fields go
  * into `extraFields` for storage in the threads.extra_fields JSON column.
@@ -96,7 +105,7 @@ function isShopifyContactForm(fromEmail, body) {
  */
 function parseShopifyEmail(fromEmail, replyTo, rawBody) {
   if (!rawBody) return null;
-  if (!isShopifyContactForm(fromEmail, rawBody)) return null;
+  if (!isShopifyContactForm(fromEmail, rawBody) && !isBrandDeskWidgetEmail(fromEmail, rawBody)) return null;
 
   // Extract real customer email from Reply-To header
   let customerEmail = null;
@@ -182,4 +191,4 @@ function buildChatBody(parsed) {
   return lines.join('\n');
 }
 
-module.exports = { parseShopifyEmail, buildChatBody, isShopifyContactForm, extractAllFields };
+module.exports = { parseShopifyEmail, buildChatBody, isShopifyContactForm, isBrandDeskWidgetEmail, extractAllFields };

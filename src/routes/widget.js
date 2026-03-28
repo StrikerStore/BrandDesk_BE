@@ -1,7 +1,7 @@
 const express = require('express');
-const crypto  = require('crypto');
 const db      = require('../config/db');
 const { PLAN_LIMITS } = require('../middleware/planLimits');
+const { sendWidgetEmail } = require('../services/mailer');
 
 const router = express.Router();
 
@@ -55,61 +55,21 @@ router.post('/ticket', async (req, res) => {
     // Generate a ticket ID
     const ticketId = `WDG-${Date.now().toString(36).toUpperCase()}`;
 
-    // Build subject line
-    const subject = order_number
-      ? `[Widget] Order #${order_number} — ${issue_category || 'Support Request'}`
-      : `[Widget] ${issue_category || 'Support Request'} from ${name || email}`;
-
-    // Create thread
-    const [result] = await db.query(
-      `INSERT INTO threads (
-        workspace_id, gmail_thread_id,
-        subject, customer_email, customer_name, customer_phone,
-        brand, status, priority, ticket_id, order_number,
-        issue_category, sub_issue, is_shopify_form, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'open', 'normal', ?, ?, ?, ?, 1, NOW())`,
-      [
-        brand.workspace_id,
-        `widget_${ticketId}`,
-        subject,
-        email.toLowerCase().trim(),
-        name || null,
-        phone || null,
-        brand.label,
-        ticketId,
-        order_number || null,
-        issue_category || null,
-        sub_issue || null,
-      ]
-    );
-
-    const threadId = result.insertId;
-
-    // Insert the message body
-    await db.query(
-      `INSERT INTO messages (
-        workspace_id, thread_id, gmail_message_id, from_email,
-        body, body_html, direction, sent_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'inbound', NOW())`,
-      [
-        brand.workspace_id,
-        threadId,
-        `widget_msg_${ticketId}`,
-        email.toLowerCase().trim(),
-        message,
-        `<p>${message.replace(/\n/g, '<br>')}</p>`,
-      ]
-    );
-
-    // Upsert customer
-    await db.query(
-      `INSERT INTO customers (workspace_id, email, name, phone)
-       VALUES (?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-         name = COALESCE(NULLIF(name, ''), VALUES(name)),
-         phone = COALESCE(NULLIF(phone, ''), VALUES(phone))`,
-      [brand.workspace_id, email.toLowerCase().trim(), name || '', phone || null]
-    );
+    // Send structured email to brand owner's Gmail instead of direct DB insert.
+    // Gmail sync will pick it up via label, emailParser will extract all fields.
+    await sendWidgetEmail({
+      to:            brand.email,
+      replyTo:       email.trim(),
+      brandName:     brand.name,
+      ticketId,
+      customerName:  name || null,
+      customerEmail: email.toLowerCase().trim(),
+      customerPhone: phone || null,
+      orderNumber:   order_number || null,
+      issueCategory: issue_category || null,
+      subIssue:      sub_issue || null,
+      message,
+    });
 
     res.status(201).json({
       success: true,

@@ -173,4 +173,44 @@ async function sendPaymentReceipt({ to, invoice }) {
   await sendUserEmail({ to, subject: `BrandDesk Invoice ${invoice_number}`, html });
 }
 
-module.exports = { sendAdminNotification, sendUserEmail, sendPaymentReceipt };
+/**
+ * Send a widget ticket email FROM branddesk@plexzuu.com TO the brand owner's Gmail.
+ * Body is structured in Key: Value format so emailParser can extract all fields.
+ * Reply-To is set to the customer's email so replies go to the customer.
+ * Throws on failure (caller should catch and return error to widget).
+ */
+async function sendWidgetEmail({ to, replyTo, brandName, ticketId, customerName, customerEmail, customerPhone, orderNumber, issueCategory, subIssue, message }) {
+  const transporter = getTransporter();
+  const from = process.env.SMTP_USER;
+
+  if (!transporter || !to) {
+    throw new Error('SMTP not configured — cannot send widget email');
+  }
+
+  const subject = `Branddesk - ${brandName} - ${ticketId}`;
+
+  // Structured plain-text body matching the Key: Value format
+  // that emailParser.js extractField() can parse
+  const lines = ['You received a new message from BrandDesk Widget.', ''];
+  if (ticketId)       lines.push(`Ticket: ${ticketId}`);
+  if (customerName)   lines.push(`Name: ${customerName}`);
+  if (customerEmail)  lines.push(`Email: ${customerEmail}`);
+  if (customerPhone)  lines.push(`Phone: ${customerPhone}`);
+  if (orderNumber)    lines.push(`Order Number: ${orderNumber}`);
+  if (issueCategory)  lines.push(`Issue Category: ${issueCategory}`);
+  if (subIssue)       lines.push(`Sub Issue: ${subIssue}`);
+  lines.push(`Body: ${message}`);
+
+  const textBody = lines.join('\n');
+
+  await transporter.sendMail({
+    from:    `"BrandDesk" <${from}>`,
+    to,
+    replyTo,
+    subject,
+    text:    textBody,
+    html:    wrapHtml(`<pre style="white-space:pre-wrap;font-family:inherit;font-size:14px;line-height:1.6;margin:0;">${textBody.replace(/</g, '&lt;')}</pre>`),
+  });
+}
+
+module.exports = { sendAdminNotification, sendUserEmail, sendPaymentReceipt, sendWidgetEmail };
