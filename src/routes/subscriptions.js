@@ -521,9 +521,11 @@ router.get('/invoice/:txnId', requireWorkspace, async (req, res) => {
   try {
     const wsId = req.user.workspace_id;
     const [rows] = await db.query(
-      `SELECT pt.*, w.name as workspace_name
+      `SELECT pt.*, w.name as workspace_name,
+              s.current_period_start, s.current_period_end
        FROM payment_transactions pt
        LEFT JOIN workspaces w ON w.id = pt.workspace_id
+       LEFT JOIN subscriptions s ON s.id = pt.subscription_id
        WHERE pt.txn_id = ? AND pt.workspace_id = ?`,
       [req.params.txnId, wsId]
     );
@@ -557,6 +559,8 @@ router.get('/invoice/:txnId', requireWorkspace, async (req, res) => {
       company_name: billingConfig.company_name,
       company_address: billingConfig.company_address,
       gst_number: billingConfig.gst_number,
+      period_start: txn.current_period_start,
+      period_end: txn.current_period_end,
     });
   } catch (err) {
     console.error('Invoice fetch error:', err);
