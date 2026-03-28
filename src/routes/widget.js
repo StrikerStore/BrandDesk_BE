@@ -64,15 +64,14 @@ router.post('/ticket', async (req, res) => {
     const [result] = await db.query(
       `INSERT INTO threads (
         workspace_id, gmail_thread_id,
-        subject, snippet, customer_email, customer_name, customer_phone,
+        subject, customer_email, customer_name, customer_phone,
         brand, status, priority, ticket_id, order_number,
         issue_category, sub_issue, is_shopify_form, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', 'normal', ?, ?, ?, ?, 1, NOW())`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'open', 'normal', ?, ?, ?, ?, 1, NOW())`,
       [
         brand.workspace_id,
-        `widget_${ticketId}`,      // pseudo gmail_thread_id for widget-created tickets
+        `widget_${ticketId}`,
         subject,
-        message.substring(0, 200),
         email.toLowerCase().trim(),
         name || null,
         phone || null,
@@ -89,15 +88,14 @@ router.post('/ticket', async (req, res) => {
     // Insert the message body
     await db.query(
       `INSERT INTO messages (
-        thread_id, gmail_message_id, from_email, to_email,
-        subject, body_text, body_html, direction, received_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'inbound', NOW())`,
+        workspace_id, thread_id, gmail_message_id, from_email,
+        body, body_html, direction, sent_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'inbound', NOW())`,
       [
+        brand.workspace_id,
         threadId,
         `widget_msg_${ticketId}`,
         email.toLowerCase().trim(),
-        brand.email,
-        subject,
         message,
         `<p>${message.replace(/\n/g, '<br>')}</p>`,
       ]
@@ -163,10 +161,10 @@ router.get('/track', async (req, res) => {
     const results = [];
     for (const ticket of tickets) {
       const [messages] = await db.query(
-        `SELECT from_email, body_text, received_at, direction
+        `SELECT from_email, body, sent_at, direction
          FROM messages
          WHERE thread_id = ?
-         ORDER BY received_at ASC
+         ORDER BY sent_at ASC
          LIMIT 10`,
         [ticket.id]
       );
@@ -179,8 +177,8 @@ router.get('/track', async (req, res) => {
         updated_at: ticket.updated_at,
         messages: messages.map(m => ({
           from: m.direction === 'inbound' ? 'you' : 'support',
-          message: m.body_text?.substring(0, 500) || '',
-          date: m.received_at,
+          message: m.body?.substring(0, 500) || '',
+          date: m.sent_at,
         })),
       });
     }
