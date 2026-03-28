@@ -38,7 +38,7 @@ router.get('/', requireWorkspace, async (req, res) => {
     const [brands] = await db.query(
       `SELECT b.id, b.label, b.email, b.name, b.category, b.website,
               b.shopify_store, b.gmail_token_id, b.brand_status, b.initial_sync_done,
-              b.rejection_reason,
+              b.rejection_reason, b.widget_token,
               (b.shopify_token IS NOT NULL AND b.shopify_token != '') AS shopify_connected,
               b.is_active, b.created_at,
               gt.email AS gmail_email
