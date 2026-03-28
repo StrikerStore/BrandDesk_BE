@@ -59,7 +59,11 @@ router.post('/ticket', async (req, res) => {
 
     // Send structured email to the owner's connected Gmail (not brand support email).
     // Gmail sync will pick it up via label, emailParser will extract all fields.
-    const ownerGmail = brand.gmail_email || brand.email;
+    if (!brand.gmail_email) {
+      console.error(`Widget ticket failed: brand "${brand.name}" (id=${brand.id}) has no Gmail linked`);
+      return res.status(503).json({ error: 'Support is not fully configured yet. Please try again later.' });
+    }
+    const ownerGmail = brand.gmail_email;
     await sendWidgetEmail({
       to:            ownerGmail,
       replyTo:       email.trim(),
