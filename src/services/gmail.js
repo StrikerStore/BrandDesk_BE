@@ -128,8 +128,16 @@ async function buildOurEmails(workspaceId) {
     if (tr.email) brandEmails.push(tr.email.toLowerCase());
   }
 
-  // Collect domains from brand emails
-  const domains = [...new Set(brandEmails.map(e => e.split('@')[1]).filter(Boolean))];
+  // Collect domains from brand emails, excluding common public email providers
+  // to avoid treating every @gmail.com customer as "our" email
+  const PUBLIC_DOMAINS = new Set([
+    'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.in', 'outlook.com',
+    'hotmail.com', 'live.com', 'aol.com', 'icloud.com', 'me.com',
+    'protonmail.com', 'zoho.com', 'yandex.com', 'mail.com', 'rediffmail.com',
+  ]);
+  const domains = [...new Set(
+    brandEmails.map(e => e.split('@')[1]).filter(d => d && !PUBLIC_DOMAINS.has(d))
+  )];
 
   return { emails: brandEmails, domains };
 }
@@ -298,12 +306,10 @@ async function processThread(gmail, gmailThreadId, brand, workspaceId) {
     isShopifyForm   = false;
   }
 
-  // Build set of our emails for direction detection
-  const ourEmailSet = await buildOurEmails(workspaceId);
-
-  const lastMsg   = messages[messages.length - 1];
-  const lastFrom  = getHeader(lastMsg.payload?.headers || [], 'From');
-  const isUnread  = !isOurEmailFromSet(lastFrom, ourEmailSet);
+  // Use Gmail's SENT label to determine if last message is from us
+  const lastMsg      = messages[messages.length - 1];
+  const lastMsgLabels = lastMsg.labelIds || [];
+  const isUnread     = !lastMsgLabels.includes('SENT');
 
   let threadId;
 
@@ -366,7 +372,9 @@ async function processThread(gmail, gmailThreadId, brand, workspaceId) {
 
     const msgHeaders = msg.payload?.headers || [];
     const from       = getHeader(msgHeaders, 'From');
-    const direction  = isOurEmailFromSet(from, ourEmailSet) ? 'outbound' : 'inbound';
+    // Use Gmail's own SENT label as primary signal — far more reliable than email matching
+    const msgLabels  = msg.labelIds || [];
+    const direction  = msgLabels.includes('SENT') ? 'outbound' : 'inbound';
     const { text, html } = extractBody(msg.payload);
     const rawMsgBody = text || html.replace(/<[^>]+>/g, '');
     const msgDate    = new Date(parseInt(msg.internalDate));
