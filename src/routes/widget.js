@@ -10,8 +10,10 @@ async function resolveBrand(shop, widgetToken) {
   if (!shop || !widgetToken) return null;
 
   const [brands] = await db.query(
-    `SELECT b.id, b.workspace_id, b.label, b.email, b.name
+    `SELECT b.id, b.workspace_id, b.label, b.email, b.name,
+            gt.email AS gmail_email
      FROM brands b
+     LEFT JOIN gmail_tokens gt ON gt.id = b.gmail_token_id
      WHERE b.widget_token = ? AND b.is_active = 1`,
     [widgetToken]
   );
@@ -55,10 +57,11 @@ router.post('/ticket', async (req, res) => {
     // Generate a ticket ID
     const ticketId = `WDG-${Date.now().toString(36).toUpperCase()}`;
 
-    // Send structured email to brand owner's Gmail instead of direct DB insert.
+    // Send structured email to the owner's connected Gmail (not brand support email).
     // Gmail sync will pick it up via label, emailParser will extract all fields.
+    const ownerGmail = brand.gmail_email || brand.email;
     await sendWidgetEmail({
-      to:            brand.email,
+      to:            ownerGmail,
       replyTo:       email.trim(),
       brandName:     brand.name,
       ticketId,
