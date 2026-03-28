@@ -63,15 +63,14 @@ router.post('/ticket', async (req, res) => {
     // Create thread
     const [result] = await db.query(
       `INSERT INTO threads (
-        workspace_id, gmail_thread_id, gmail_message_id,
+        workspace_id, gmail_thread_id,
         subject, snippet, customer_email, customer_name, customer_phone,
         brand, status, priority, ticket_id, order_number,
         issue_category, sub_issue, is_shopify_form, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 'normal', ?, ?, ?, ?, 1, NOW())`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', 'normal', ?, ?, ?, ?, 1, NOW())`,
       [
         brand.workspace_id,
         `widget_${ticketId}`,      // pseudo gmail_thread_id for widget-created tickets
-        `widget_msg_${ticketId}`,  // pseudo gmail_message_id
         subject,
         message.substring(0, 200),
         email.toLowerCase().trim(),
