@@ -67,9 +67,11 @@ function generateHash({ txnid, amount, productinfo, firstname, email, udf1 = '',
 function verifyPaymentHash(payuResponse) {
   const { status, email, firstname, productinfo, amount, txnid, hash,
           udf1 = '', udf2 = '', udf3 = '', udf4 = '', udf5 = '' } = payuResponse;
+  if (!hash) return false;
   const str = `${PAYU_SALT()}|${status}||||||${udf5}|${udf4}|${udf3}|${udf2}|${udf1}|${email}|${firstname}|${productinfo}|${amount}|${txnid}|${PAYU_KEY()}`;
   const computed = crypto.createHash('sha512').update(str).digest('hex');
-  return computed === hash;
+  if (computed.length !== hash.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(hash));
 }
 
 // ── Build full PayU form parameters ────────────────────────────────

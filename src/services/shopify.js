@@ -1,5 +1,6 @@
 const axios = require('axios');
 const db = require('../config/db');
+const { decrypt } = require('../utils/encryption');
 
 const API_VERSION = '2024-01';
 
@@ -239,7 +240,7 @@ async function resolveDataSource(workspaceId, brandLabel) {
     return {
       source: 'shopify',
       shop: normalizeShopDomain(brands[0].shopify_store),
-      token: brands[0].shopify_token,
+      token: decrypt(brands[0].shopify_token),
     };
   }
 

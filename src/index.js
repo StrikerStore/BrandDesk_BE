@@ -26,6 +26,7 @@ const db = require('./config/db');
 const { syncThreads } = require('./services/gmail');
 const { runAutoAck, runAutoClose } = require('./services/automation');
 const { requireAuth, requireAdmin, requireWorkspace } = require('./middleware/authMiddleware');
+const { globalLimiter, authLimiter, aiLimiter, widgetLimiter, demoLimiter } = require('./middleware/rateLimiter');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -42,6 +43,9 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// ── Rate limiting ────────────────────────────────────────────
+app.use(globalLimiter);
 
 // ── CORS ──────────────────────────────────────────────────────
 // Always include production origins regardless of NODE_ENV
@@ -65,7 +69,6 @@ const corsOptions = {
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);   // allow server-to-server / curl
     if (allowedOrigins.includes(origin)) return cb(null, true);
-    if (origin.endsWith('.railway.app')) return cb(null, true);
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
   credentials: true,
@@ -101,7 +104,7 @@ app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(cookieParser());
 
 // ── Public routes ─────────────────────────────────────────────
-app.use('/api/users', usersRoutes); // login/logout are public; admin routes protected inside
+app.use('/api/users', authLimiter, usersRoutes); // login/logout are public; admin routes protected inside
 app.get('/health',    (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // ── Gmail OAuth ───────────────────────────────────────────────
@@ -126,11 +129,11 @@ app.use('/api/analytics', requireAuth, analyticsRoutes);
 app.use('/api/views',     requireAuth, viewsRoutes);
 app.use('/api/settings',  requireAuth, settingsRoutes);
 app.use('/api/orders',    requireAuth, ordersRoutes);
-app.use('/api/ai',        requireAuth, aiRoutes);
+app.use('/api/ai',        requireAuth, aiLimiter, aiRoutes);
 app.use('/api/support',   requireAuth, supportRoutes);
 app.use('/api/admin',     requireAdmin, adminRoutes);
-app.use('/api/widget',    widgetRoutes);  // public — widget auth via brand_token
-app.use('/api/demo',     demoRoutes);   // public — demo request form
+app.use('/api/widget',    widgetLimiter, widgetRoutes);  // public — widget auth via brand_token
+app.use('/api/demo',     demoLimiter, demoRoutes);   // public — demo request form
 
 // Manual sync — workspace-scoped
 app.post('/api/sync', requireWorkspace, async (req, res) => {

@@ -8,6 +8,7 @@ const { generateToken, requireWorkspace, requireWorkspaceAdmin, JWT_SECRET } = r
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
 const { normalizeShopDomain } = require('../services/shopify');
+const { encrypt } = require('../utils/encryption');
 
 const router = express.Router();
 
@@ -49,7 +50,7 @@ router.get('/google/signin', (req, res) => {
   const url = client.generateAuthUrl({
     access_type: 'online',
     prompt:      'select_account',
-    state:       Buffer.from(JSON.stringify({ intent, redirect })).toString('base64'),
+    state:       jwt.sign({ intent, redirect }, JWT_SECRET, { expiresIn: '10m' }),
     scope: [
       'openid',
       'https://www.googleapis.com/auth/userinfo.email',
@@ -69,14 +70,16 @@ router.get('/google/signin/callback', async (req, res) => {
     return res.redirect(`${onboardingUrl}?auth_error=${encodeURIComponent(error)}`);
   }
 
-  // Decode intent + redirect from state
+  // Verify and decode intent + redirect from signed state
   let intent = 'login';
   let redirect = null;
   try {
-    const parsed = JSON.parse(Buffer.from(state, 'base64').toString());
+    const parsed = jwt.verify(state, JWT_SECRET);
     intent = parsed.intent || 'login';
     redirect = parsed.redirect || null;
-  } catch {}
+  } catch {
+    return res.redirect(`${onboardingUrl}?auth_error=invalid_or_expired_state`);
+  }
 
   try {
     const client = createSigninOAuthClient();
@@ -357,7 +360,7 @@ router.get('/google/callback', async (req, res) => {
          refresh_token = IF(VALUES(refresh_token) IS NOT NULL, VALUES(refresh_token), refresh_token),
          expiry_date   = VALUES(expiry_date),
          updated_at    = NOW()`,
-      [workspaceId, gmailEmail, tokens.access_token, tokens.refresh_token, tokens.expiry_date]
+      [workspaceId, gmailEmail, encrypt(tokens.access_token), encrypt(tokens.refresh_token), tokens.expiry_date]
     );
 
     // Get the gmail_token row id
@@ -536,7 +539,7 @@ router.get('/shopify/callback', async (req, res) => {
           // Update existing brand with token
           await db.query(
             'UPDATE brands SET shopify_token = ? WHERE id = ?',
-            [accessToken, existingBrands[0].id]
+            [encrypt(accessToken), existingBrands[0].id]
           );
         } else {
           // Get shop info from Shopify to find the owner's email
@@ -562,7 +565,7 @@ router.get('/shopify/callback', async (req, res) => {
                   `INSERT INTO brands (workspace_id, label, email, name, shopify_store, shopify_token, widget_token)
                    VALUES (?, ?, ?, ?, ?, ?, ?)
                    ON DUPLICATE KEY UPDATE shopify_token = VALUES(shopify_token), shopify_store = VALUES(shopify_store)`,
-                  [wsId, shopName.toLowerCase().replace(/[^a-z0-9]+/g, '-'), shopEmail, shopName, normalizedShop, accessToken, widgetToken]
+                  [wsId, shopName.toLowerCase().replace(/[^a-z0-9]+/g, '-'), shopEmail, shopName, normalizedShop, encrypt(accessToken), widgetToken]
                 );
               }
             }
@@ -596,7 +599,7 @@ router.get('/shopify/callback', async (req, res) => {
 
       await db.query(
         'UPDATE brands SET shopify_store = ?, shopify_token = ? WHERE id = ? AND workspace_id = ?',
-        [normalizedShop, accessToken, stateData.brand_id, stateData.workspace_id]
+        [normalizedShop, encrypt(accessToken), stateData.brand_id, stateData.workspace_id]
       );
 
       if (stateData.origin === 'onboarding') {

@@ -12,7 +12,8 @@
     "db:seed:shopify-test": "node src/config/seed_shopify_test.js",
     "db:seed:demo-threads": "node src/config/seed_demo_threads.js",
     "db:cleanup:shopify-test": "node src/config/cleanup_shopify_test.js",
-    "db:reset": "node src/config/reset.js"
+    "db:reset": "node src/config/reset.js",
+    "db:encrypt-tokens": "node scripts/encrypt-existing-tokens.js"
   },
   "dependencies": {
     "axios": "^1.6.0",
@@ -21,6 +22,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "express-rate-limit": "^8.3.1",
     "express-session": "^1.17.3",
     "googleapis": "^128.0.0",
     "jsonwebtoken": "^9.0.2",

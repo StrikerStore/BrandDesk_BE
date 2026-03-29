@@ -9,17 +9,19 @@ router.get('/overview', requireWorkspace, async (req, res) => {
   try {
     const { brand } = req.query;
     const wsId = req.user.workspace_id;
-    const bw = brand && brand !== 'all' ? `AND brand = ${db.escape(brand)}` : '';
+    const params = [wsId];
+    let bw = '';
+    if (brand && brand !== 'all') { bw = 'AND brand = ?'; params.push(brand); }
 
-    const [[open]]     = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND status='open' ${bw}`, [wsId]);
-    const [[inProg]]   = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND status='in_progress' ${bw}`, [wsId]);
-    const [[resolved]] = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND status='resolved' ${bw}`, [wsId]);
-    const [[total]]    = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? ${bw}`, [wsId]);
-    const [[urgent]]   = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND priority='urgent' AND status!='resolved' ${bw}`, [wsId]);
-    const [[todayRes]] = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND status='resolved' AND DATE(resolved_at)=CURDATE() ${bw}`, [wsId]);
-    const [[todayNew]] = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND DATE(created_at)=CURDATE() ${bw}`, [wsId]);
-    const [[avgResp]]  = await db.query(`SELECT ROUND(AVG(first_response_minutes)) c FROM threads WHERE workspace_id=? AND first_response_minutes IS NOT NULL ${bw}`, [wsId]);
-    const [[unread]]   = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND is_unread=1 ${bw}`, [wsId]);
+    const [[open]]     = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND status='open' ${bw}`, [...params]);
+    const [[inProg]]   = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND status='in_progress' ${bw}`, [...params]);
+    const [[resolved]] = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND status='resolved' ${bw}`, [...params]);
+    const [[total]]    = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? ${bw}`, [...params]);
+    const [[urgent]]   = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND priority='urgent' AND status!='resolved' ${bw}`, [...params]);
+    const [[todayRes]] = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND status='resolved' AND DATE(resolved_at)=CURDATE() ${bw}`, [...params]);
+    const [[todayNew]] = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND DATE(created_at)=CURDATE() ${bw}`, [...params]);
+    const [[avgResp]]  = await db.query(`SELECT ROUND(AVG(first_response_minutes)) c FROM threads WHERE workspace_id=? AND first_response_minutes IS NOT NULL ${bw}`, [...params]);
+    const [[unread]]   = await db.query(`SELECT COUNT(*) c FROM threads WHERE workspace_id=? AND is_unread=1 ${bw}`, [...params]);
 
     res.json({
       open:              open.c     || 0,
@@ -40,14 +42,16 @@ router.get('/volume', requireWorkspace, async (req, res) => {
   try {
     const { days = 30, brand } = req.query;
     const wsId = req.user.workspace_id;
-    const bw = brand && brand !== 'all' ? `AND brand = ${db.escape(brand)}` : '';
+    const params = [wsId, parseInt(days)];
+    let bw = '';
+    if (brand && brand !== 'all') { bw = 'AND brand = ?'; params.push(brand); }
     const [rows] = await db.query(`
       SELECT DATE(created_at) as date, COUNT(*) as total,
         SUM(CASE WHEN status='resolved' THEN 1 ELSE 0 END) as resolved
       FROM threads
       WHERE workspace_id=? AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY) ${bw}
       GROUP BY DATE(created_at) ORDER BY date ASC
-    `, [wsId, parseInt(days)]);
+    `, params);
 
     const map = {};
     rows.forEach(r => {
@@ -88,14 +92,16 @@ router.get('/by-issue', requireWorkspace, async (req, res) => {
   try {
     const { brand } = req.query;
     const wsId = req.user.workspace_id;
-    const bw = brand && brand !== 'all' ? `AND brand = ${db.escape(brand)}` : '';
+    const params = [wsId];
+    let bw = '';
+    if (brand && brand !== 'all') { bw = 'AND brand = ?'; params.push(brand); }
     const [rows] = await db.query(`
       SELECT issue_category as issue, COUNT(*) as total,
         SUM(CASE WHEN status='resolved' THEN 1 ELSE 0 END) as resolved
       FROM threads
       WHERE workspace_id=? AND issue_category IS NOT NULL AND issue_category != '' ${bw}
       GROUP BY issue_category ORDER BY total DESC LIMIT 10
-    `, [wsId]);
+    `, params);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -105,7 +111,9 @@ router.get('/response-time', requireWorkspace, async (req, res) => {
   try {
     const { days = 30, brand } = req.query;
     const wsId = req.user.workspace_id;
-    const bw = brand && brand !== 'all' ? `AND brand = ${db.escape(brand)}` : '';
+    const params = [wsId, parseInt(days)];
+    let bw = '';
+    if (brand && brand !== 'all') { bw = 'AND brand = ?'; params.push(brand); }
     const [rows] = await db.query(`
       SELECT DATE(created_at) as date,
         ROUND(AVG(first_response_minutes)) as avg_mins,
@@ -114,7 +122,7 @@ router.get('/response-time', requireWorkspace, async (req, res) => {
       WHERE workspace_id=? AND first_response_minutes IS NOT NULL
         AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY) ${bw}
       GROUP BY DATE(created_at) ORDER BY date ASC
-    `, [wsId, parseInt(days)]);
+    `, params);
     res.json(rows.map(r => ({ ...r, avg_mins: Number(r.avg_mins || 0) })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

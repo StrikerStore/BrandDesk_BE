@@ -3,6 +3,7 @@ const db = require('../config/db');
 const { parseShopifyEmail, buildChatBody, extractAllFields } = require('./emailParser');
 const { getBrandsByWorkspace } = require('./brands');
 const { PLAN_LIMITS } = require('../middleware/planLimits');
+const { encrypt, decrypt } = require('../utils/encryption');
 
 function createOAuthClient() {
   return new google.auth.OAuth2(
@@ -53,15 +54,15 @@ async function getAuthenticatedClientForBrand(brandId) {
 function _buildClient(tokenRow) {
   const client = createOAuthClient();
   client.setCredentials({
-    access_token:  tokenRow.access_token,
-    refresh_token: tokenRow.refresh_token,
+    access_token:  decrypt(tokenRow.access_token),
+    refresh_token: decrypt(tokenRow.refresh_token),
     expiry_date:   tokenRow.expiry_date,
   });
 
   client.on('tokens', async (newTokens) => {
     await db.query(
       'UPDATE gmail_tokens SET access_token = ?, expiry_date = ?, updated_at = NOW() WHERE id = ?',
-      [newTokens.access_token, newTokens.expiry_date, tokenRow.id]
+      [encrypt(newTokens.access_token), newTokens.expiry_date, tokenRow.id]
     );
   });
 

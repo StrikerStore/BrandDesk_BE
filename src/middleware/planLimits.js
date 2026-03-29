@@ -128,7 +128,7 @@ function checkPlanLimit(resource) {
       next();
     } catch (err) {
       console.error('Plan limit check error:', err);
-      next(); // Don't block on errors — fail open
+      return res.status(503).json({ error: 'Unable to verify plan limits. Please try again.' });
     }
   };
 }
@@ -158,7 +158,7 @@ async function checkTrialExpiry(req, res, next) {
     next();
   } catch (err) {
     console.error('Trial expiry check error:', err);
-    next(); // Fail open
+    return res.status(503).json({ error: 'Unable to verify subscription status. Please try again.' });
   }
 }
 

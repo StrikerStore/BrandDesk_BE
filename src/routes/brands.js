@@ -5,6 +5,7 @@ const { requireWorkspace, requireWorkspaceAdmin } = require('../middleware/authM
 const { checkPlanLimit } = require('../middleware/planLimits');
 const { getLabels } = require('../services/gmail');
 const { sendAdminNotification } = require('../services/mailer');
+const { encrypt } = require('../utils/encryption');
 
 const router = express.Router();
 
@@ -54,7 +55,7 @@ router.get('/', requireWorkspace, async (req, res) => {
 });
 
 // ── POST /api/brands — create brand (onboarding or admin) ──────
-router.post('/', requireWorkspaceAdmin, async (req, res) => {
+router.post('/', requireWorkspaceAdmin, checkPlanLimit('brands'), async (req, res) => {
   try {
     const { name, email, category, website, label, shopify_store, shopify_token } = req.body;
     if (!email?.trim()) return res.status(400).json({ error: 'Email required' });
@@ -73,7 +74,7 @@ router.post('/', requireWorkspaceAdmin, async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 0)`,
       [req.user.workspace_id, label?.trim() || null, email.trim(), name.trim(),
        category?.trim() || null, website?.trim() || null,
-       shopify_store?.trim() || null, shopify_token?.trim() || null, widgetToken, autoGmailTokenId]
+       shopify_store?.trim() || null, encrypt(shopify_token?.trim() || null), widgetToken, autoGmailTokenId]
     );
 
     const [rows] = await db.query('SELECT * FROM brands WHERE id = ?', [result.insertId]);
@@ -283,7 +284,7 @@ router.patch('/:id', requireWorkspaceAdmin, async (req, res) => {
     if (category !== undefined) { updates.push('category = ?');     params.push(category?.trim() || null); }
     if (website !== undefined)  { updates.push('website = ?');      params.push(website?.trim() || null); }
     if (shopify_store !== undefined) { updates.push('shopify_store = ?'); params.push(shopify_store?.trim() || null); }
-    if (shopify_token !== undefined) { updates.push('shopify_token = ?'); params.push(shopify_token?.trim() || null); }
+    if (shopify_token !== undefined) { updates.push('shopify_token = ?'); params.push(encrypt(shopify_token?.trim() || null)); }
 
     if (!updates.length) return res.status(400).json({ error: 'Nothing to update' });
 

@@ -5,19 +5,13 @@ const { generateToken, requireAuth, requireAdmin, requireWorkspace } = require('
 
 const router = express.Router();
 
-// ── Rate limiting for login ──────────────────────────────────
-const loginAttempts = new Map(); // ip → { count, resetAt }
-
-function checkLoginRateLimit(ip) {
-  const now   = Date.now();
-  const entry = loginAttempts.get(ip);
-  if (entry && now < entry.resetAt) {
-    if (entry.count >= 10) return false;
-    entry.count++;
-  } else {
-    loginAttempts.set(ip, { count: 1, resetAt: now + 15 * 60 * 1000 });
-  }
-  return true;
+function validatePassword(password) {
+  if (!password || password.length < 8) return 'Password must be at least 8 characters';
+  if (!/[A-Z]/.test(password)) return 'Password must include an uppercase letter';
+  if (!/[a-z]/.test(password)) return 'Password must include a lowercase letter';
+  if (!/[0-9]/.test(password)) return 'Password must include a number';
+  if (!/[^A-Za-z0-9]/.test(password)) return 'Password must include a special character';
+  return null;
 }
 
 function slugify(text) {
@@ -43,7 +37,8 @@ router.post('/register', async (req, res) => {
 
   if (!name?.trim())        return res.status(400).json({ error: 'Name required' });
   if (!email?.trim() || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
-  if (!password || password.length < 8)       return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  const pwError = validatePassword(password);
+  if (pwError) return res.status(400).json({ error: pwError });
   if (!workspaceName?.trim()) return res.status(400).json({ error: 'Workspace/store name required' });
 
   const conn = await db.getConnection();
@@ -117,11 +112,6 @@ router.post('/register', async (req, res) => {
 
 // ── POST /api/users/login — public ───────────────────────────
 router.post('/login', async (req, res) => {
-  const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-  if (!checkLoginRateLimit(ip)) {
-    return res.status(429).json({ error: 'Too many login attempts. Try again in 15 minutes.' });
-  }
-
   try {
     const { email, password } = req.body;
     if (!email?.trim() || !password) {
@@ -298,7 +288,8 @@ router.patch('/me', requireAuth, async (req, res) => {
       if (!rows[0].password_hash) return res.status(400).json({ error: 'Google accounts cannot set a password' });
       const valid = await bcrypt.compare(current_password, rows[0].password_hash);
       if (!valid) return res.status(400).json({ error: 'Current password is incorrect' });
-      if (new_password.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+      const pwError = validatePassword(new_password);
+      if (pwError) return res.status(400).json({ error: pwError });
       updates.push('password_hash = ?');
       params.push(await bcrypt.hash(new_password, 12));
     }
@@ -337,7 +328,8 @@ router.post('/', requireAdmin, async (req, res) => {
     const { name, email, password, role = 'agent' } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
     if (!email?.trim() || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
-    if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    const pwError = validatePassword(password);
+    if (pwError) return res.status(400).json({ error: pwError });
     if (role !== 'agent') return res.status(400).json({ error: 'Role must be agent' });
 
     const hash = await bcrypt.hash(password, 12);
@@ -375,7 +367,9 @@ router.patch('/:id', requireAdmin, async (req, res) => {
     if (name?.trim())                           { updates.push('name = ?');          params.push(name.trim().slice(0, 100)); }
     if (role && ['owner','agent'].includes(role)) { updates.push('role = ?');        params.push(role); }
     if (is_active !== undefined)                { updates.push('is_active = ?');     params.push(is_active ? 1 : 0); }
-    if (password && password.length >= 8) {
+    if (password) {
+      const pwError = validatePassword(password);
+      if (pwError) return res.status(400).json({ error: pwError });
       updates.push('password_hash = ?');
       params.push(await bcrypt.hash(password, 12));
     }
