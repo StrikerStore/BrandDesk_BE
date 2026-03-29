@@ -796,7 +796,7 @@ router.patch('/brands/:brandId/reject', async (req, res) => {
                 <p style="margin:0;font-size:14px;color:#991b1b;"><strong>Reason:</strong> ${reason.trim()}</p>
               </div>
               <p style="font-size:14px;color:#374151;line-height:1.7;margin:0;">
-                You can update your brand details and resubmit for review. If you have questions, contact us at support@branddesk.in.
+                You can update your brand details and resubmit for review. If you have questions, contact us at branddesk@plexzuu.com.
               </p>`,
           }).catch(err => console.error('Brand rejection email failed:', err.message));
         }
